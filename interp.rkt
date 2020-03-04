@@ -34,9 +34,23 @@
      (match (interp-envs es r)
        ['err 'err]
        [vs
-        (interp-env e (append (zip xs vs) r))])]
+        (if (any-err? vs)
+          'err
+          (interp-env e (append (zip xs vs) r)))])]
+    [`(let* ,(list bs ...) ,e)
+     (match (map-accum-env bs r)
+       ['err 'err]
+       [new-r
+        (interp-env e new-r)])]
     [(list 'cond cs ... `(else ,en))
      (interp-cond-env cs en r)]))
+
+(define (any-err? xs)
+  (match xs
+    ['() #f]
+    ['err #t]
+    [(cons y ys)
+     (if (eq? 'err y) #t (any-err? ys))]))
 
 ;; (Listof Expr) REnv -> (Listof Value) | 'err
 (define (interp-envs es r)
@@ -46,6 +60,15 @@
      (match (interp-env e r)
        ['err 'err]
        [v (cons v (interp-envs es r))])]))
+
+;; (Listof (Symbol Expr)) REnv -> REnv | 'err 
+(define (map-accum-env bs r)
+  (match bs
+    ['() r]
+    [(cons (list b e) bss)
+     (match (interp-env e r)
+       ['err 'err]
+       [v (map-accum-env bss (cons (list b v) r))])]))
 
 ;; (Listof (List Expr Expr)) Expr REnv -> Answer
 (define (interp-cond-env cs en r)

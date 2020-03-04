@@ -8,6 +8,7 @@
 ;; | `(if ,Expr ,Expr ,Expr)
 ;; | `(cond ,@Clauses [else ,Expr])
 ;; | `(let ,Bindings ,Expr)
+;; | `(let* ,Bindings ,Expr)
 
 ;; type Prim =
 ;; | 'add1 | 'sub1 | 'zero? | 'abs | '- | 'char? | 'integer? | 'boolean?
@@ -16,4 +17,4 @@
 ;; type Clauses = (Listof `(,Expr ,Expr))
 ;; type Bindings = (Listof `(,Variable ,Expr))
 
-;; type Variable = Symbol (except 'let, 'add1, etc.)
+;; type Variable = Symbol (except 'let, 'let*, 'add1, etc.)
