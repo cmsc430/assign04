@@ -52,7 +52,7 @@
 (define prims
   '("add1" "sub1" "zero?" "abs" "-" "integer->char" "char->integer" "char?" "integer?" "boolean?"))
 
-(define kws '("cond" "if" "let" "else"))
+(define kws '("cond" "if" "let" "let*" "else"))
 
 (define delim
   (string-append "$|"
