@@ -6,8 +6,8 @@
          rackunit)
 
 (define (check-compiler e)
-  (check-equal? (interp e)
-                (asm-interp (compile e))              
+  (check-equal? (asm-interp (compile e))
+                (interp e)
                 e))
 
 (for ([e exprs])
