@@ -1,8 +1,8 @@
 #lang racket
-(require "../interp.rkt" rackunit)
+(require "../syntax.rkt" "../interp.rkt" rackunit)
 
 (define (run e)
-  (interp e))
+  (interp (sexpr->ast e)))
 
 ;; Abscond examples
 (check-equal? (run 7) 7)
@@ -81,16 +81,6 @@
 (check-equal? (run '(let ((x 7) (z 9)) (let ((x 2)) x))) 2)
 (check-equal? (run '(let ((x 7) (z 9)) (let ((x (add1 x)) (z z)) x))) 8)
 (check-equal? (run '(let ((x (add1 #f)) (z 9)) x)) 'err)
-(check-equal? (run '(let* () 7)) 7)
-(check-equal? (run '(let* ((x 7) (y 8)) 2)) 2)
-(check-equal? (run '(let* ((x 7) (y 8)) (add1 x))) 8)
-(check-equal? (run '(let* ((x 7) (y x)) (add1 x))) 8)
-(check-equal? (run '(let* ((x 8) (y x)) (add1 y))) 9)
-(check-equal? (run '(let* ((x (add1 7)) (y 0)) y)) 0)
-(check-equal? (run '(let* ((x 7) (z 9)) (let ((y 2)) x))) 7)
-(check-equal? (run '(let* ((x 7) (z 9)) (let ((x 2)) x))) 2)
-(check-equal? (run '(let* ((x 7) (z 9)) (let ((x (add1 x)) (z z)) x))) 8)
-(check-equal? (run '(let* ((x (add1 #f)) (z 9)) x)) 'err)
 (check-equal? (run '(char? #\a)) #t)
 (check-equal? (run '(integer? #\a)) #f)
 (check-equal? (run '(boolean? #\a)) #f)

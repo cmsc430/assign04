@@ -1,5 +1,6 @@
 #lang racket
 (provide parse)
+(require "ast.rkt")
 
 ; type Token =
 ; | Integer
@@ -85,7 +86,7 @@
 ;; -> Expr
 (define (parse-expr!)
   (match (look-ahead)
-    [(? integer? i) (match-tok! i)]
+    [(? integer? i) (int-e (match-tok! i))]
     ['lparen
      (let ((lp (match-tok! 'lparen))
            (e  (parse-compound!))
@@ -104,18 +105,18 @@
      (let ((p (match-tok! p))
            (e (parse-expr!)))
        (match p
-         [`(prim ,p) `(,p ,e)]))]
+         [`(prim ,p) (prim-e p e)]))]
     ['(keyword if)
      (let ((if (match-tok! '(keyword if)))
            (q (parse-question!))
            (e1 (parse-expr!))
            (e2 (parse-expr!)))
-       `(if ,q ,e1 ,e2))]
+       (if-e q e1 e2))]
     ['(keyword cond)
      (let ((c (match-tok! '(keyword cond)))
            (cs (parse-clauses!))
            (el (parse-else!)))
-       `(cond ,@cs ,el))]))
+       (cond-e cs el))]))
 
 ;; -> (Listof (List (List 'zero? Expr) Expr))
 (define (parse-clauses!)
@@ -137,13 +138,13 @@
            (q (parse-question!))
            (a (parse-expr!))
            (rp (match-tok! 'rparen)))
-       (list q a))]
+       (clause q a))]
     ['lsquare
      (let ((lp (match-tok! 'lsquare))
            (q (parse-question!))
            (a (parse-expr!))
            (rp (match-tok! 'rsquare)))
-       (list q a))]))
+       (clause q a))]))
 
 ;; -> (Listof (List 'else Expr))
 (define (parse-else!)
@@ -153,13 +154,13 @@
            (el (match-tok! '(keyword else)))
            (e  (parse-expr!))
            (rp (match-tok! 'rparen)))
-       `(else ,e))]
+       e)]
     ['lsquare
      (let ((lp (match-tok! 'lsquare))
            (el (match-tok! '(keyword else)))
            (e  (parse-expr!))
            (rp (match-tok! 'rsquare)))
-       `(else ,e))]))
+       e)]))
 
 ;; -> (List 'zero? Expr)
 (define (parse-question!)
@@ -169,13 +170,13 @@
            (z (match-tok! '(prim zero?)))
            (e (parse-expr!))
            (rp (match-tok! 'rparen)))
-       `(zero? ,e))]
+       e)]
     ['lsquare
      (let ((lp (match-tok! 'lsquare))
            (z (match-tok! '(prim zero?)))
            (e (parse-expr!))
            (rp (match-tok! 'rsquare)))
-       `(zero? ,e))]))
+       e)]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Functional approach
@@ -190,7 +191,7 @@
 (define (parse-expr lot)
   (match lot
     [(cons (? integer? i) lot)
-     (cons lot i)]
+     (cons lot (int-e i))]
     [(cons 'lparen lot)
      (match (parse-compound lot)
        [(cons (cons 'rparen lot) e)
@@ -208,7 +209,7 @@
        [(cons lot e)
         (match p
           [`(prim ,p)
-           (cons lot (list p e))])])]
+           (cons lot (prim-e p e))])])]
     [(cons '(keyword if) lot)
      (match (parse-question lot)
        [(cons lot q)
@@ -216,13 +217,13 @@
           [(cons lot e1)
            (match (parse-expr lot)
              [(cons lot e2)
-              (cons lot (list 'if q e1 e2))])])])]
+              (cons lot (if-e q e1 e2))])])])]
     [(cons '(keyword cond) lot)
      (match (parse-clauses lot)
        [(cons lot cs)
         (match (parse-else lot)
           [(cons lot el)
-           (cons lot `(cond ,@cs ,el))])])]))
+           (cons lot (cond-e cs el))])])]))
 
 ;; (Listof Token) -> (Pairof (Listof Token) (Listof (List (List 'zero? Expr) Expr)))
 ;; requires look-ahead of 2
@@ -247,13 +248,13 @@
        [(cons lot q)
         (match (parse-expr lot)
           [(cons (cons 'rparen lot) e)
-           (cons lot (list q e))])])]
+           (cons lot (clause q e))])])]
     [(cons 'lsquare lot)
      (match (parse-question lot)
        [(cons lot q)
         (match (parse-expr lot)
           [(cons (cons 'rsquare lot) e)
-           (cons lot (list q e))])])]))
+           (cons lot (clause q e))])])]))
 
 ;; (Listof Token) -> (Pairof (Listof Token) (List 'zero? Expr))
 (define (parse-question lot)
@@ -261,11 +262,11 @@
     [(cons 'lparen (cons '(prim zero?) lot))
      (match (parse-expr lot)
        [(cons (cons 'rparen lot) e)
-        (cons lot (list 'zero? e))])]
+        (cons lot e)])]
     [(cons 'lsquare (cons '(prim zero?) lot))
      (match (parse-expr lot)
        [(cons (cons 'rsquare lot) e)
-        (cons lot (list 'zero? e))])]))
+        (cons lot e)])]))
 
 ;; (Listof Token) -> (Pairof (Listof Token) (List 'else Expr)
 (define (parse-else lot)
@@ -273,11 +274,11 @@
     [(cons 'lparen (cons '(keyword else) lot))
      (match (parse-expr lot)
        [(cons (cons 'rparen lot) e)
-        (cons lot (list 'else e))])]
+        (cons lot e)])]
     [(cons 'lsquare (cons '(keyword else) lot))
      (match (parse-expr lot)
        [(cons (cons 'rsquare lot) e)
-        (cons lot (list 'else e))])]))
+        (cons lot e)])]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -286,26 +287,30 @@
 (module+ test
   (require rackunit)
   (require "lex.rkt")
+  (require "ast.rkt")
   ;; String -> Expr
   (define (p s)
     (parse (lex-string (string-append "#lang racket " s))))
 
-  (check-equal? (p "7") 7)
-  (check-equal? (p "(add1 7)") '(add1 7))
-  (check-equal? (p "(sub1 7)") '(sub1 7))
-  (check-equal? (p "[add1 7]") '(add1 7))
-  (check-equal? (p "[sub1 7]") '(sub1 7))
-  (check-equal? (p "(abs 7)") '(abs 7))
-  (check-equal? (p "[abs 7]") '(abs 7))  (check-equal? (p "(- 7)") '(- 7))
-  (check-equal? (p "[- 7]") '(- 7))
-  (check-equal? (p "(cond [else 1])") '(cond [else 1]))
+  (check-equal? (p "7") (int-e 7))
+  (check-equal? (p "(add1 7)") (prim-e 'add1 (int-e 7)))
+  (check-equal? (p "(sub1 7)") (prim-e 'sub1 (int-e 7)))
+  (check-equal? (p "[add1 7]") (prim-e 'add1 (int-e 7)))
+  (check-equal? (p "[sub1 7]") (prim-e 'sub1 (int-e 7)))
+  (check-equal? (p "(abs 7)")  (prim-e 'abs (int-e 7)))
+  (check-equal? (p "[abs 7]")  (prim-e 'abs (int-e 7)))
+  (check-equal? (p "(- 7)")    (prim-e '-   (int-e 7)))
+  (check-equal? (p "[- 7]")    (prim-e '-   (int-e 7)))
+  (check-equal? (p "(cond [else 1])") (cond-e '() (int-e 1)))
   (check-equal? (p "(cond [(zero? 0) 2] [else 1])")
-                '(cond [(zero? 0) 2] [else 1]))
+                (cond-e (list (clause (prim-e 'zero? (int-e 0)) (int-e 2))) (int-e 1)))
   (check-equal? (p "(cond [(zero? 0) 2] [(zero? 1) 3] [else 1])")
-                '(cond [(zero? 0) 2] [(zero? 1) 3] [else 1]))
+                (cond-e (list (clause (prim-e 'zero? (int-e 0)) (int-e 2))
+                              (clause (prim-e 'zero? (int-e 1)) (int-e 3))) (int-e 1)))
   (check-equal? (p "(cond [(zero? 0) 2] [(zero? 1) 3] (else 1))")
-                '(cond [(zero? 0) 2] [(zero? 1) 3] [else 1]))
+                (cond-e (list (clause (prim-e 'zero? (int-e 0)) (int-e 2))
+                              (clause (prim-e 'zero? (int-e 1)) (int-e 3))) (int-e 1)))
   (check-equal? (p "(if (zero? 9) 1 2)")
-                '(if (zero? 9) 1 2))
+                (if-e (prim-e 'zero? (int-e 9)) (int-e 1) (int-e 2)))
   ;; TODO: add more tests
   #;...)

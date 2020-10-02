@@ -1,5 +1,8 @@
 #lang racket
 (provide (all-defined-out))
+(require (only-in "syntax.rkt" prim?))
+
+(require "ast.rkt")
 
 ;; type Value =
 ;; | Integer
@@ -17,40 +20,28 @@
 ;; Expr REnv -> Answer
 (define (interp-env e r)
   (match e
-    [(? value? v) v]
-    [(list (? prim? p) e)
+    [(int-e i) i]
+    [(bool-e b) b]
+    [(char-e c) c]
+    [(prim-e p e)
      (let ((a (interp-env e r)))
        (interp-prim p a))]
-    [`(if ,e0 ,e1 ,e2)
-     (match (interp-env e0 r)
+    [(if-e i t f)
+     (match (interp-env i r)
        ['err 'err]
        [v
         (if v
-            (interp-env e1 r)
-            (interp-env e2 r))])]    
-    [(? symbol? x)
-     (lookup r x)]
-    [`(let ,(list `(,xs ,es) ...) ,e)
-     (match (interp-envs es r)
-       ['err 'err]
-       [vs
-        (if (any-err? vs)
-          'err
-          (interp-env e (append (zip xs vs) r)))])]
-    [`(let* ,(list bs ...) ,e)
-     (match (map-accum-env bs r)
-       ['err 'err]
-       [new-r
-        (interp-env e new-r)])]
-    [(list 'cond cs ... `(else ,en))
-     (interp-cond-env cs en r)]))
-
-(define (any-err? xs)
-  (match xs
-    ['() #f]
-    ['err #t]
-    [(cons y ys)
-     (if (eq? 'err y) #t (any-err? ys))]))
+            (interp-env t r)
+            (interp-env f r))])]    
+    [(var-e v)
+     (lookup r v)]
+    [(let-e (list (binding xs es) ...) b)
+      (match (interp-envs es r)
+        ['err 'err]
+        [vs
+          (interp-env b (append (zip xs vs) r))])]
+    [(cond-e cs f)
+      (interp-cond-env cs f r)]))
 
 ;; (Listof Expr) REnv -> (Listof Value) | 'err
 (define (interp-envs es r)
@@ -61,42 +52,22 @@
        ['err 'err]
        [v (cons v (interp-envs es r))])]))
 
-;; (Listof (Symbol Expr)) REnv -> REnv | 'err 
-(define (map-accum-env bs r)
-  (match bs
-    ['() r]
-    [(cons (list b e) bss)
-     (match (interp-env e r)
-       ['err 'err]
-       [v (map-accum-env bss (cons (list b v) r))])]))
-
-;; (Listof (List Expr Expr)) Expr REnv -> Answer
-(define (interp-cond-env cs en r)
+;; (Listof (clause i b)) Expr REnv -> Answer
+(define (interp-cond-env cs f r)
   (match cs
-    ['() (interp-env en r)]
-    [(cons `(,eq ,ea) cs)
-     (match (interp-env eq r)
+    ['() (interp-env f r)]
+    [(cons (clause i b) css)
+     (match (interp-env i r)
        ['err 'err]
        [v
         (if v
-            (interp-env ea r)
-            (interp-cond-env cs en r))])]))
-
-;; Any -> Boolean
-(define (prim? x)
-  (and (symbol? x)
-       (memq x '(add1 sub1 zero? abs - char? boolean? integer? integer->char char->integer))))
-
-;; Any -> Boolean
-(define (value? x)
-  (or (integer? x)
-      (boolean? x)
-      (char? x)))
+            (interp-env b r)
+            (interp-cond-env css f r))])]))
 
 ;; Prim Answer -> Answer
 (define (interp-prim p a)
   (match (list p a)
-    [(list p 'err) 'err]
+    [(list _  'err) 'err]
     [(list '- (? integer? i0)) (- i0)]    
     [(list 'abs (? integer? i0)) (abs i0)]
     [(list 'add1 (? integer? i0)) (+ i0 1)]
