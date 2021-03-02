@@ -107,6 +107,115 @@
                                             h h "|"
                                             h ")") p)))
     (and (or (eof-object? (peek-char p))
+             (not (char-alphabetic? (pe#lang racket
+(provide lex-port lex-string)
+
+;; NOTE: you don't need to modify (or understand) this file.
+;; But there's nothing complicated going on.  It's just like the 330 lexer,
+;; using regular expressions to tokenize input.
+
+;; String -> [Listof Token]
+(define (lex-string s)
+  (lex-port (open-input-string s)))
+
+;; InputPort -> [Listof Token]
+(define (lex-port p)
+  (unless (regexp-try-match #px"^[[:space:]]*#lang racket($|[[:space:]])" p)
+    (error "must start with #lang racket"))
+  (let loop ()
+    (cond
+      [(regexp-try-match "^$" p) (list 'eof)]
+      [(regexp-try-match #px"^[[:space:]]+" p) (loop)]
+      [else
+       (cons
+        (cond
+          [(regexp-try-match (keywords kws) p)
+           => (compose mk-keyword string->symbol bytes->string/utf-8 first)]
+          [(regexp-try-match (keywords prims) p)
+           => (compose mk-prim string->symbol bytes->string/utf-8 first)]
+          [(regexp-try-match "^[-]?[0-9]+" p)
+           => (compose string->number bytes->string/utf-8 first)]
+          [(regexp-try-match symbol p)
+           => (compose mk-var string->symbol bytes->string/utf-8 first)]
+          [(try-quote "(" p) 'lparen]
+          [(try-quote ")" p) 'rparen]
+          [(try-quote "[" p) 'lsquare]
+          [(try-quote "]" p) 'rsquare]
+          [(try-quote "#t" p) #t]
+          [(try-quote "#f" p) #f]
+          [(special-char p) => identity]
+          [(octal-char p) => identity]
+          [(hex4-char p) => identity]
+          [(hex6-char p) => identity]
+          [(char p) => identity]
+          [else (error "lexing error")])
+        (loop))])))
+
+(define (mk-keyword k) `(keyword ,k))
+(define (mk-prim k) `(prim ,k))
+(define (mk-var k) `(variable ,k))
+
+(define (try-quote s p)
+  (regexp-try-match (string-append "^" (regexp-quote s)) p))
+
+(define prims
+  '("add1" "sub1" "zero?" "abs" "-" "integer->char" "char->integer" "char?" "integer?" "boolean?"))
+
+(define kws '("cond" "if" "let" "else"))
+
+(define delim
+  (string-append "$|"
+                 (regexp-quote " ")  "|"
+                 (regexp-quote "\n") "|"
+                 (regexp-quote "\t") "|"
+                 (regexp-quote "(")  "|"
+                 (regexp-quote ")")  "|"
+                 (regexp-quote "[")  "|"
+                 (regexp-quote "]")))
+
+(define symbol
+  (string-append
+   "^([^]# \n\t\\(\\)[][^] \n\t\\(\\)[]*)"))
+
+(define (special-char p)
+  (let ((r (regexp-try-match (string-append "^#\\\\("
+                                            (apply string-append (add-between special-char-names "|"))
+                                            ")")
+                             p)))
+    (and (or (eof-object? (peek-char p))
+             (not (char-alphabetic? (peek-char p))))
+         r
+         (bytes->char (second r)))))
+
+(define (octal-char p)
+  (let ((r (regexp-try-match "^#\\\\([0-7][0-7][0-7])" p)))
+    (and (or (eof-object? (peek-char p))
+             (not (char-alphabetic? (peek-char p))))
+         r
+         (integer->char
+          (convert 8 (map octal-byte->number (bytes->list (second r))))))))
+
+(define (hex4-char p)
+  (define h "[0-9a-fA-F]")
+  (let ((r (regexp-try-match (string-append "^#\\\\u(" h h h h "|" h h h "|" h h "|" h ")") p)))
+    (and (or (eof-object? (peek-char p))
+             (not (char-alphabetic? (peek-char p))))
+         r
+         (integer->char
+          (convert 16 (map hex-byte->number (bytes->list (second r))))))))
+
+(define (hex6-char p)
+  (define h "[0-9a-fA-F]")
+  (let ((r (regexp-try-match (string-append "^#\\\\U("
+                                            "00" h h h h h h "|" ; undocumented in Racket
+                                            "0" h h h h h h "|"  ; undocumented in Racket
+                                            h h h h h h "|"
+                                            h h h h h "|"
+                                            h h h h "|"
+                                            h h h "|"
+                                            h h "|"
+                                            h ")") p)))
+    (and (or (eof-object? (peek-char p))
              (not (char-alphabetic? (peek-char p))))
          r
          (integer->char

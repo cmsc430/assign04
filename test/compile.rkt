@@ -1,8 +1,24 @@
 #lang racket
-(require "../syntax.rkt" "../compile.rkt" "../asm/interp.rkt" rackunit)
+(require "../types.rkt" "../ast.rkt" "../parse.rkt" "../compile.rkt" a86/interp rackunit)
+
+(require (prefix-in ru: rackunit))
+(define-syntax-rule
+    (check-equal? c e)
+    (ru:check-equal? (with-handlers ([exn:fail? identity]) c) e))
+(define-syntax-rule
+    (check pred c e)
+    (ru:check pred (with-handlers ([exn:fail? identity]) c) e))
+
+;; link with runtime for IO operations
+(unless (file-exists? "../runtime.o")
+  (system "make -C .. runtime.o"))
+(current-objs
+ (list (path->string (normalize-path "../runtime.o"))))
 
 (define (run e)
-  (asm-interp (compile (sexpr->ast e))))
+  (match (asm-interp (compile (parse e)))
+    ['err 'err]
+    [v (bits->value v)]))
 
 ;; Abscond examples
 (check-equal? (run 7) 7)
@@ -91,18 +107,34 @@
 (check-equal? (run '(let ((x 7) (z 9)) (let ((x 2)) x))) 2)
 (check-equal? (run '(let ((x 7) (z 9)) (let ((x (add1 x)) (z z)) x))) 8)
 (check-equal? (run '(let ((x (add1 #f)) (z 9)) x)) 'err)
-(check-equal? (run '(char? #\a)) #t)
-(check-equal? (run '(char? 4)) #f)
-(check-equal? (run '(char? #f)) #f)
+
+;; Multi-bind let*
+(check-equal? (run '(let* () 42)) 42)
+(check-equal? (run '(let* ((x 7) (y 8)) 2)) 2)
+(check-equal? (run '(let* ((x 7) (y 8)) (add1 x))) 8)
+(check-equal? (run '(let* ((x 7) (y 8)) (add1 y))) 9)
+(check-equal? (run '(let* ((x (add1 7)) (y 0)) y)) 0)
+(check-equal? (run '(let* ((x 7) (z 9)) (let ((y 2)) x))) 7)
+(check-equal? (run '(let* ((x 7) (z 9)) (let ((x 2)) x))) 2)
+(check-equal? (run '(let* ((x 7) (z 9)) (let ((x (add1 x)) (z z)) x))) 8)
+(check-equal? (run '(let* ((x (add1 #f)) (z 9)) x)) 'err)
+(check-equal? (run '(let* ((x 6) (y (add1 x))) y)) 7)
+(check-equal? (run '(let* ((x 7) (x 9)) x)) 9)
+
+;; Variadic Plus
+(check-equal? (run '(+)) 0)
+(check-equal? (run '(+ 1 2)) 3)
+(check-equal? (run '(+ 1 2 3 4 5)) 15)
+(check-equal? (run '(+ 1 2 (add1 2) 4 (sub1 5))) 14)
+(check-equal? (run '(+ 1 2 (sub1 #f) 4 5)) 'err)
+
+;; Boolean?/Integer?
 (check-equal? (run '(integer? #\a)) #f)
 (check-equal? (run '(integer? 4)) #t)
 (check-equal? (run '(integer? #f)) #f)
 (check-equal? (run '(boolean? #\a)) #f)
 (check-equal? (run '(boolean? 4)) #f)
 (check-equal? (run '(boolean? #t)) #t)
-(check-equal? (run '(char->integer #\a)) 97)
-(check-equal? (run '(integer->char 97)) #\a)
-(check-equal? (run '(integer->char #\a)) 'err)
 (check-equal? (run '#\a) #\a)
 (check-equal? (run '#\space) #\space)
 (check-equal? (run '#\λ) #\λ)
@@ -119,6 +151,4 @@
 (check-equal? (run '(integer->char -1)) 'err)
 (check-equal? (run '(integer->char #xD800)) 'err)
 (check-equal? (run '(integer->char #xDFFF)) 'err)
-(check-equal? (run '(integer->char (sub1 #xD800))) (integer->char (sub1 #xD800)))
-(check-equal? (run '(integer->char (add1 #xDFFF))) (integer->char (add1 #xDFFF)))
 

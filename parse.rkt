@@ -2,315 +2,71 @@
 (provide parse)
 (require "ast.rkt")
 
-; type Token =
-; | Integer
-; | Char
-; | Boolean
-; | ‘(variable ,Variable)
-; | ‘(keyword ,Keyword)
-; | ‘(prim ,Prim)
-; | 'lparen    ;; (
-; | 'rparen    ;; )
-; | 'lsquare   ;; [
-; | 'rsquare   ;; ]
-; | 'eof       ;; end of file
+(define (well-formed? e)
+  ;; TODO: Replace with your definition
+  #t
 
-; type Variable = Symbol (other than 'let, 'cond, etc.)
-
-; type Keyword =
-; | 'let
-; | 'cond
-; | 'else
-; | 'if
-
-; type Prim =
-; | 'add1
-; | 'sub1
-; | 'zero?
-; | 'abs
-; | '-
-; | 'integer->char
-; | 'char->integer
-; | 'char?
-; | 'boolean?
-; | 'integer?
-
-;; (Listof Token) -> Expr
-(define (parse lot)
-  0
-  ;; Select whichever parser you want to start from
-  #;
-  (parse-imperative lot)
-  #;
-  (parse-functional lot))
-
-;; Any -> Boolean
-(define (prim? p)
-  (match p
-    [`(prim ,_) #t]
-    [_ #f]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Imperative approach
-
-(define *input* (box '()))
-
-(define (parse-imperative lot)
-  (set-box! *input* lot)
-  (let ((e (parse-expr!))
-        (_ (match-tok! 'eof)))
-    e))
-
-;; -> Token
-(define (look-ahead)
-  (match (unbox *input*)
-    ['() (error "no look-ahead")]
-    [(cons x _) x]))
-
-;; -> Token
-(define (look-ahead2)
-  (match (unbox *input*)
-    ['() (error "no look-ahead")]
-    [(cons _ '()) (error "no look-ahead 2")]
-    [(cons _ (cons x _)) x]))
-
-;; Token -> Token
-(define (match-tok! t)
-  (match (unbox *input*)
-    ['() (error "no token")]
-    [(cons x xs)
-     (if (equal? t x)
-         (begin (set-box! *input* xs) x)
-         (error "parse error"))]))
-
-;; -> Expr
-(define (parse-expr!)
-  (match (look-ahead)
-    [(? integer? i) (int-e (match-tok! i))]
-    ['lparen
-     (let ((lp (match-tok! 'lparen))
-           (e  (parse-compound!))
-           (rp (match-tok! 'rparen)))
-       e)]
-    ['lsquare
-     (let ((lp (match-tok! 'lsquare))
-           (e  (parse-compound!))
-           (rp (match-tok! 'rsquare)))
-       e)]))
-
-;; -> Expr
-(define (parse-compound!)
-  (match (look-ahead)
-    [(? prim? p)
-     (let ((p (match-tok! p))
-           (e (parse-expr!)))
-       (match p
-         [`(prim ,p) (prim-e p e)]))]
-    ['(keyword if)
-     (let ((if (match-tok! '(keyword if)))
-           (q (parse-question!))
-           (e1 (parse-expr!))
-           (e2 (parse-expr!)))
-       (if-e q e1 e2))]
-    ['(keyword cond)
-     (let ((c (match-tok! '(keyword cond)))
-           (cs (parse-clauses!))
-           (el (parse-else!)))
-       (cond-e cs el))]))
-
-;; -> (Listof (List (List 'zero? Expr) Expr))
-(define (parse-clauses!)
-  (match (look-ahead)
-    [(or 'lparen 'lsquare)
-     (match (look-ahead2)
-       ['(keyword else) '()]
-       [_
-        (let ((c (parse-clause!))
-              (cs (parse-clauses!)))
-          (cons c cs))])]
-    [_ '()]))
-
-;; -> (List (List 'zero? Expr) Expr)
-(define (parse-clause!)
-  (match (look-ahead)
-    ['lparen
-     (let ((lp (match-tok! 'lparen))
-           (q (parse-question!))
-           (a (parse-expr!))
-           (rp (match-tok! 'rparen)))
-       (clause q a))]
-    ['lsquare
-     (let ((lp (match-tok! 'lsquare))
-           (q (parse-question!))
-           (a (parse-expr!))
-           (rp (match-tok! 'rsquare)))
-       (clause q a))]))
-
-;; -> (Listof (List 'else Expr))
-(define (parse-else!)
-  (match (look-ahead)
-    ['lparen
-     (let ((lp (match-tok! 'lparen))
-           (el (match-tok! '(keyword else)))
-           (e  (parse-expr!))
-           (rp (match-tok! 'rparen)))
-       e)]
-    ['lsquare
-     (let ((lp (match-tok! 'lsquare))
-           (el (match-tok! '(keyword else)))
-           (e  (parse-expr!))
-           (rp (match-tok! 'rsquare)))
-       e)]))
-
-;; -> (List 'zero? Expr)
-(define (parse-question!)
-  (match (look-ahead)
-    ['lparen
-     (let ((lp (match-tok! 'lparen))
-           (z (match-tok! '(prim zero?)))
-           (e (parse-expr!))
-           (rp (match-tok! 'rparen)))
-       e)]
-    ['lsquare
-     (let ((lp (match-tok! 'lsquare))
-           (z (match-tok! '(prim zero?)))
-           (e (parse-expr!))
-           (rp (match-tok! 'rsquare)))
-       e)]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Functional approach
-
-;; (Listof Token) -> Expr
-(define (parse-functional lot)
-  (match (parse-expr lot)
-    [(cons '(eof) e) e]
-    [_ (error "parse error")]))
-
-;; (Listof Token) -> (Pairof (Listof Token) Expr)
-(define (parse-expr lot)
-  (match lot
-    [(cons (? integer? i) lot)
-     (cons lot (int-e i))]
-    [(cons 'lparen lot)
-     (match (parse-compound lot)
-       [(cons (cons 'rparen lot) e)
-        (cons lot e)])]
-    [(cons 'lsquare lot)
-     (match (parse-compound lot)
-       [(cons (cons 'rsquare lot) e)
-        (cons lot e)])]))
-
-;; (Listof Token) -> (Pairof (Listof Token) Expr)
-(define (parse-compound lot)
-  (match lot
-    [(cons (? prim? p) lot)
-     (match (parse-expr lot)
-       [(cons lot e)
-        (match p
-          [`(prim ,p)
-           (cons lot (prim-e p e))])])]
-    [(cons '(keyword if) lot)
-     (match (parse-question lot)
-       [(cons lot q)
-        (match (parse-expr lot)
-          [(cons lot e1)
-           (match (parse-expr lot)
-             [(cons lot e2)
-              (cons lot (if-e q e1 e2))])])])]
-    [(cons '(keyword cond) lot)
-     (match (parse-clauses lot)
-       [(cons lot cs)
-        (match (parse-else lot)
-          [(cons lot el)
-           (cons lot (cond-e cs el))])])]))
-
-;; (Listof Token) -> (Pairof (Listof Token) (Listof (List (List 'zero? Expr) Expr)))
-;; requires look-ahead of 2
-(define (parse-clauses lot)
-  (match lot
-    [(cons (or 'lparen 'lsquare) (cons '(keyword else) _))
-     (cons lot '())]
-    [(cons (or 'lparen 'lsquare) _)
-     (match (parse-clause lot)
-       [(cons lot c)
-        (match (parse-clauses lot)
-          [(cons lot cs)
-           (cons lot (cons c cs))])])]
-    [_
-     (cons lot '())]))
-
-;; (Listof Token) -> (Pairof (Listof Token) (List (List 'zero? Expr) Expr))
-(define (parse-clause lot)
-  (match lot
-    [(cons 'lparen lot)
-     (match (parse-question lot)
-       [(cons lot q)
-        (match (parse-expr lot)
-          [(cons (cons 'rparen lot) e)
-           (cons lot (clause q e))])])]
-    [(cons 'lsquare lot)
-     (match (parse-question lot)
-       [(cons lot q)
-        (match (parse-expr lot)
-          [(cons (cons 'rsquare lot) e)
-           (cons lot (clause q e))])])]))
-
-;; (Listof Token) -> (Pairof (Listof Token) (List 'zero? Expr))
-(define (parse-question lot)
-  (match lot
-    [(cons 'lparen (cons '(prim zero?) lot))
-     (match (parse-expr lot)
-       [(cons (cons 'rparen lot) e)
-        (cons lot e)])]
-    [(cons 'lsquare (cons '(prim zero?) lot))
-     (match (parse-expr lot)
-       [(cons (cons 'rsquare lot) e)
-        (cons lot e)])]))
-
-;; (Listof Token) -> (Pairof (Listof Token) (List 'else Expr)
-(define (parse-else lot)
-  (match lot
-    [(cons 'lparen (cons '(keyword else) lot))
-     (match (parse-expr lot)
-       [(cons (cons 'rparen lot) e)
-        (cons lot e)])]
-    [(cons 'lsquare (cons '(keyword else) lot))
-     (match (parse-expr lot)
-       [(cons (cons 'rsquare lot) e)
-        (cons lot e)])]))
+  )
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Tests
 
-(module+ test
-  (require rackunit)
-  (require "lex.rkt")
-  (require "ast.rkt")
-  ;; String -> Expr
-  (define (p s)
-    (parse (lex-string (string-append "#lang racket " s))))
 
-  (check-equal? (p "7") (int-e 7))
-  (check-equal? (p "(add1 7)") (prim-e 'add1 (int-e 7)))
-  (check-equal? (p "(sub1 7)") (prim-e 'sub1 (int-e 7)))
-  (check-equal? (p "[add1 7]") (prim-e 'add1 (int-e 7)))
-  (check-equal? (p "[sub1 7]") (prim-e 'sub1 (int-e 7)))
-  (check-equal? (p "(abs 7)")  (prim-e 'abs (int-e 7)))
-  (check-equal? (p "[abs 7]")  (prim-e 'abs (int-e 7)))
-  (check-equal? (p "(- 7)")    (prim-e '-   (int-e 7)))
-  (check-equal? (p "[- 7]")    (prim-e '-   (int-e 7)))
-  (check-equal? (p "(cond [else 1])") (cond-e '() (int-e 1)))
-  (check-equal? (p "(cond [(zero? 0) 2] [else 1])")
-                (cond-e (list (clause (prim-e 'zero? (int-e 0)) (int-e 2))) (int-e 1)))
-  (check-equal? (p "(cond [(zero? 0) 2] [(zero? 1) 3] [else 1])")
-                (cond-e (list (clause (prim-e 'zero? (int-e 0)) (int-e 2))
-                              (clause (prim-e 'zero? (int-e 1)) (int-e 3))) (int-e 1)))
-  (check-equal? (p "(cond [(zero? 0) 2] [(zero? 1) 3] (else 1))")
-                (cond-e (list (clause (prim-e 'zero? (int-e 0)) (int-e 2))
-                              (clause (prim-e 'zero? (int-e 1)) (int-e 3))) (int-e 1)))
-  (check-equal? (p "(if (zero? 9) 1 2)")
-                (if-e (prim-e 'zero? (int-e 9)) (int-e 1) (int-e 2)))
-  ;; TODO: add more tests
-  #;...)
+;; We move parsing to a helper function to allow for calling well-formed?
+;; S-Expr -> Expr
+(define (parse s)
+  (let ((e (parse-aux s)))
+    (if (well-formed? e)
+        e
+        (IllFormedError))))
+
+(define (parse-aux s)
+    (cond
+      [(integer? s) (Int s)]
+      [(boolean? s) (Bool s)]
+      [(char? s)    (Char s)]
+      [(symbol? s)  (match s
+                      ['eof (Eof)]
+                      [_ (Var s)])]
+      [else
+       (match s
+         ['eof                    (Eof)]
+         [(list 'read-byte)       (Prim0 'read-byte)]
+         [(list 'peek-byte)       (Prim0 'peek-byte)]
+         [(list 'void)            (Prim0 'void)]
+         [(list 'add1 e)          (Prim1 'add1 (parse-aux e))]
+         [(list 'sub1 e)          (Prim1 'sub1 (parse-aux e))]
+         [(list 'zero? e)         (Prim1 'zero? (parse-aux e))]
+         ;; Implemented for you: abs, -, not
+         [(list 'abs e)  (Prim1 'abs (parse-aux e))]
+         [(list '- e)    (Prim1 '- (parse-aux e))]
+         [(list 'not e)  (Prim1 'not (parse-aux e))]
+         [(list 'char? e)         (Prim1 'char? (parse-aux e))]
+         ;; TODO: integer? / boolean?
+         [(list 'write-byte e)    (Prim1 'write-byte (parse-aux e))]
+         [(list 'eof-object? e)   (Prim1 'eof-object? (parse-aux e))]
+         [(list 'integer->char e) (Prim1 'integer->char (parse-aux e))]
+         [(list 'char->integer e) (Prim1 'char->integer (parse-aux e))]
+         [(list 'begin e1 e2)     (Begin (parse-aux e1) (parse-aux e2))]
+         [(list '+ e1 e2)         (Prim2 '+ (parse-aux e1) (parse-aux e2))]
+         ;; TODO: Variadic +
+         [(cons '+ es)            (PrimVar '+ (map parse-aux es))]
+         [(list '- e1 e2)         (Prim2 '- (parse-aux e1) (parse-aux e2))]       
+         [(list 'if e1 e2 e3)
+          (If (parse-aux e1) (parse-aux e2) (parse-aux e3))]
+         ;; TODO: Let and Let* with multiple bindings
+         ;; Implemented for you: cond
+         [(cons 'cond clauses)
+          (let ((res (parse-cond clauses)))
+            (Cond (car res) (cdr res)))]
+         [_ (error "Parse error" s)])]
+      ))
+
+
+;; Implemented for you: cond
+(define (parse-cond cs)
+  (match cs
+    [(list (list 'else e)) (cons '() (parse-aux e))]
+    [(cons (list p e) css)
+     (let ((res (parse-cond css)))
+       (cons (cons (Clause (parse-aux p) (parse-aux e)) (car res)) (cdr res)))]
+    ))
