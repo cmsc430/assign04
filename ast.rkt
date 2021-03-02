@@ -24,8 +24,8 @@
 ;; type Clauses = Listof (Expr, Expr)
 ;; type Id  = Symbol
 ;; type Op0 = 'read-byte
-;; type Op1 = 'add1 | 'sub1 | 'zero? | abs | - | not
-;;          | 'char? | integer? | boolean?
+;; type Op1 = 'add1 | 'sub1 | 'zero? | 'abs | '- | 'not
+;;          | 'char? | 'integer? | 'boolean?
 ;;          | 'integer->char | 'char->integer
 ;;          | 'write-byte | 'eof-object?
 ;; type Op2 = '+ | '-
