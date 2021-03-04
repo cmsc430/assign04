@@ -103,5 +103,5 @@
 (define (get-bods cs)
   (match cs
     ['() '()]
-    [(cons (Clause _ b) cs) (cons b (get-preds cs))]))
+    [(cons (Clause _ b) cs) (cons b (get-bods cs))]))
 
