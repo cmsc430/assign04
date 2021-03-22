@@ -107,6 +107,9 @@
 (check-equal? (run '(let ((x 7) (z 9)) (let ((x 2)) x))) 2)
 (check-equal? (run '(let ((x 7) (z 9)) (let ((x (add1 x)) (z z)) x))) 8)
 (check-equal? (run '(let ((x (add1 #f)) (z 9)) x)) 'err)
+(check-equal? (run '(let ((x 1)) (let ((y 3) (z (+ x 5))) z))) 6)
+(check-equal? (run '(let ((x 1)) (let ((y 3) (z (let ((x 42)) (+ x 0)))) z))) 42)
+(check-equal? (run '(let ((x 1) (y (let ((z 1)) z))) (let ((y 3) (z (+ x y))) z))) 2)
 
 ;; Multi-bind let*
 (check-equal? (run '(let* () 42)) 42)
@@ -120,6 +123,9 @@
 (check-equal? (run '(let* ((x (add1 #f)) (z 9)) x)) 'err)
 (check-equal? (run '(let* ((x 6) (y (add1 x))) y)) 7)
 (check-equal? (run '(let* ((x 7) (x 9)) x)) 9)
+(check-equal? (run '(let* ((x 1)) (let* ((y 3) (z (+ x 5))) z))) 6)
+(check-equal? (run '(let* ((x 1)) (let* ((y 3) (z (let* ((x 42)) (+ x 0)))) z))) 42)
+(check-equal? (run '(let* ((x 1) (y (let* ((z 1)) z))) (let* ((y 3) (z (+ x y))) z))) 4)
 
 ;; Variadic Plus
 (check-equal? (run '(+)) 0)
